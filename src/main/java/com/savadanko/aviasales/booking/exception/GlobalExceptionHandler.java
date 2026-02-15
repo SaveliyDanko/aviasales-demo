@@ -1,6 +1,7 @@
 package com.savadanko.aviasales.booking.exception;
 
 import com.savadanko.aviasales.payment.exception.InvalidPaymentException;
+import com.savadanko.aviasales.order.exception.InvalidOrderException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
@@ -85,6 +86,23 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(InvalidPaymentException.class)
     public ResponseEntity<ApiErrorResponse> handleInvalidPayment(
             InvalidPaymentException ex,
+            HttpServletRequest request
+    ) {
+        ApiErrorResponse response = new ApiErrorResponse(
+                Instant.now(),
+                HttpStatus.BAD_REQUEST.value(),
+                HttpStatus.BAD_REQUEST.getReasonPhrase(),
+                ex.getMessage(),
+                request.getRequestURI(),
+                List.of()
+        );
+
+        return ResponseEntity.badRequest().body(response);
+    }
+
+    @ExceptionHandler(InvalidOrderException.class)
+    public ResponseEntity<ApiErrorResponse> handleInvalidOrder(
+            InvalidOrderException ex,
             HttpServletRequest request
     ) {
         ApiErrorResponse response = new ApiErrorResponse(
