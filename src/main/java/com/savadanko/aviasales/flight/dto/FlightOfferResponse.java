@@ -12,9 +12,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class FlightOfferResponse {
-    private String id;
-
-    private String searchId;
+    private String offerId;
 
     private String source;
 
