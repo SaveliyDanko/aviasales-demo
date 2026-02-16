@@ -17,6 +17,5 @@ public class CheckAvailabilityResponse {
     private MoneyDto oldPrice;
     private MoneyDto finalPrice;
     private BigDecimal difference;
-    private String bookingToken;
     private String message;
 }

@@ -25,8 +25,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class PaymentService {
 
-    private static final String SUCCESS_MESSAGE = "Оплата прошла, ожидайте билет на почту.";
-    private static final String FAILURE_MESSAGE = "На карте недостаточно средств. Пожалуйста, попробуйте другую карту.";
+    private static final String SUCCESS_MESSAGE = "The payment has been completed, expect a ticket in the mail.";
+    private static final String FAILURE_MESSAGE = "There are not enough funds on the card. Please try another card.";
 
     private final PaymentRepository paymentRepository;
     private final BookingRepository bookingRepository;

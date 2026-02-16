@@ -24,8 +24,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class OrderService {
 
-    private static final String PRICE_CHANGED_MESSAGE = "Дешевые билеты закончились, доступен следующий тариф.";
-    private static final String SOLD_OUT_MESSAGE = "Мест на выбранном рейсе больше нет.";
+    private static final String PRICE_CHANGED_MESSAGE = "The cheap tickets are over, and the following fare is available.";
+    private static final String SOLD_OUT_MESSAGE = "There are no more seats on the selected flight.";
 
     private final FlightOfferRepository flightOfferRepository;
     private final OrderMapper orderMapper;
@@ -63,7 +63,6 @@ public class OrderService {
                     null,
                     current,
                     null,
-                    "temp-token-" + UUID.randomUUID(),
                     null
             );
         }
@@ -75,7 +74,6 @@ public class OrderService {
                 expected,
                 current,
                 difference,
-                null,
                 PRICE_CHANGED_MESSAGE
         );
     }
@@ -84,7 +82,6 @@ public class OrderService {
         return new CheckAvailabilityResponse(
                 CheckAvailabilityStatus.SOLD_OUT,
                 false,
-                null,
                 null,
                 null,
                 null,
