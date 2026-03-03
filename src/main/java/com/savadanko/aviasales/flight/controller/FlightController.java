@@ -19,14 +19,14 @@ public class FlightController {
 
     @GetMapping("/flights")
     public ResponseEntity<FlightOfferResponseList> searchAndFilterFlights(
-            // бывшие search-параметры
+            // search-параметры
             @RequestParam(required = false) String origin,
             @RequestParam(required = false) String destination,
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate departureDate,
             @RequestParam(required = false) Integer passengers,
 
-            // бывшие filter-параметры
+            // filter-параметры
             @RequestParam(required = false) Integer maxStops,
             @RequestParam(required = false) BigDecimal maxPrice,
             @RequestParam(required = false) Boolean baggage,

@@ -13,6 +13,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public class FlightOfferSpecifications {
     public static Specification<FlightOffer> buildSpec(
@@ -31,7 +32,6 @@ public class FlightOfferSpecifications {
 
             predicates.add(cb.isTrue(root.get("isBookable")));
 
-            // Фильтр по пассажирам
             if (passengers != null && passengers > 0) {
                 Expression<Integer> adults = root.get("passengers").get("adults");
                 Expression<Integer> children = root.get("passengers").get("children");
@@ -62,12 +62,15 @@ public class FlightOfferSpecifications {
             Join<Itinerary, Segment> segment = itinerary.join("segments", JoinType.INNER);
 
             // Фильтр по дате вылета (в пределах дня)
+            query.distinct(true);
+
             if (departureDate != null) {
                 ZoneOffset offset = ZoneOffset.ofHours(3);
-                OffsetDateTime startOfDay = departureDate.atStartOfDay().atOffset(offset);
-                OffsetDateTime endOfDay = departureDate.atTime(23, 59, 59).atOffset(offset);
+                OffsetDateTime start = departureDate.atStartOfDay().atOffset(offset);
+                OffsetDateTime nextDay = departureDate.plusDays(1).atStartOfDay().atOffset(offset);
 
-                predicates.add(cb.between(segment.get("departure").get("at"), startOfDay, endOfDay));
+                predicates.add(cb.greaterThanOrEqualTo(segment.get("departure").get("at"), start));
+                predicates.add(cb.lessThan(segment.get("departure").get("at"), nextDay));
             }
 
             // Фильтр по origin/destination
@@ -80,7 +83,8 @@ public class FlightOfferSpecifications {
 
             // Фильтр по авиакомпании
             if (StringUtils.hasText(airline)) {
-                predicates.add(cb.equal(segment.get("carrier").get("operatingName"), airline));
+                String a = airline.trim().toLowerCase(Locale.ROOT);
+                predicates.add(cb.equal(cb.lower(segment.get("carrier").get("operatingName")), a));
             }
 
             // Фильтр по багажу

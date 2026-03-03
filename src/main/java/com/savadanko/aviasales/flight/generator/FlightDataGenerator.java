@@ -62,7 +62,7 @@ public class FlightDataGenerator {
         log.info("Запуск генерации 1000 реалистичных рейсов по РФ...");
         List<FlightOffer> offers = new ArrayList<>();
 
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 5; i++) {
             offers.add(generateSingleOffer());
         }
 
