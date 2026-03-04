@@ -36,8 +36,19 @@ export MONGODB_URI=mongodb://localhost:27017/aviasales
 4. Process payment for booked total:
 - `POST /api/v1/payments/process`
 
+### Seats model
+`FlightOffer.passengers` now contains:
+- `totalSeats`
+- `countBookable`
+
+After successful payment:
+- `countBookable` decreases by number of passengers in booking.
+- if `countBookable == 0`, the offer becomes non-bookable.
+
 ### Booking request contract (important)
 `CreateBookingRequest` now requires `expectedPrice`:
+- maximum 10 passengers per booking.
+- passengers are handled as a single booking category (no ADULT/CHILD/INFANT split in API request).
 ```json
 {
   "offerId": "string",

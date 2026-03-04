@@ -39,6 +39,8 @@ public class PaymentService {
 
     private final PaymentRepository paymentRepository;
     private final BookingRepository bookingRepository;
+    private final FlightOfferRepository flightOfferRepository;
+    private final FlightSearchCacheInvalidationService cacheInvalidationService;
     private final BookingTimelineService bookingTimelineService;
     private final PaymentGatewayAdapter paymentGatewayAdapter;
     private final PaymentMapper paymentMapper;
@@ -80,12 +82,23 @@ public class PaymentService {
             return response;
         }
 
+        int requestedSeats = booking.getPassengers() == null ? 0 : booking.getPassengers().size();
+        if (requestedSeats <= 0) {
+            throw new InvalidPaymentException("Booking has no passengers: " + booking.getBookingId());
+        }
+
+        FlightOffer offer = flightOfferRepository.findByOfferIdForUpdate(booking.getOfferId())
+                .orElseThrow(() -> new InvalidPaymentException("Offer not found for booking: " + booking.getOfferId()));
+        reserveSeats(offer, requestedSeats);
+
         PaymentGatewayResult gatewayResult = paymentGatewayAdapter.process(request.getPayment());
         PaymentTransactionEntity paymentTransaction = buildBaseEntity(request, booking);
 
         if (gatewayResult.isSuccess()) {
             booking.setStatus(BookingStatus.TICKETING_IN_PROGRESS);
             bookingRepository.save(booking);
+            flightOfferRepository.save(offer);
+            cacheInvalidationService.invalidateByOfferId(offer.getOfferId());
 
             paymentTransaction.setStatus(PaymentStatus.SUCCESS);
             paymentTransaction.setTransactionId(gatewayResult.getTransactionId());
@@ -102,6 +115,8 @@ public class PaymentService {
         paymentTransaction.setTransactionId("tx-failed-" + UUID.randomUUID());
         paymentTransaction.setErrorCode(gatewayResult.getErrorCode());
         paymentTransaction.setMessage(FAILURE_MESSAGE);
+        releaseSeats(offer, requestedSeats);
+        flightOfferRepository.save(offer);
 
         PaymentTransactionEntity saved = paymentRepository.save(paymentTransaction);
         bookingTimelineService.logPaymentProcessed(booking, saved);
@@ -132,5 +147,34 @@ public class PaymentService {
 
     private BigDecimal scaleMoney(BigDecimal value) {
         return value.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private void reserveSeats(FlightOffer offer, int requestedSeats) {
+        Passengers passengers = offer.getPassengers();
+        if (passengers == null) {
+            throw new InvalidPaymentException("Offer has no seat information: " + offer.getOfferId());
+        }
+
+        int countBookable = passengers.getCountBookable();
+        if (countBookable < requestedSeats) {
+            throw new InvalidPaymentException(
+                    "Not enough seats for payment. Requested " + requestedSeats + ", available " + countBookable
+            );
+        }
+
+        passengers.setCountBookable(countBookable - requestedSeats);
+        offer.setBookable(passengers.getCountBookable() > 0);
+    }
+
+    private void releaseSeats(FlightOffer offer, int releasedSeats) {
+        Passengers passengers = offer.getPassengers();
+        if (passengers == null) {
+            return;
+        }
+
+        int maxSeats = passengers.getTotalSeats();
+        int restored = Math.min(maxSeats, passengers.getCountBookable() + releasedSeats);
+        passengers.setCountBookable(restored);
+        offer.setBookable(restored > 0);
     }
 }

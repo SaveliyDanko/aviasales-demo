@@ -1,7 +1,6 @@
 package com.savadanko.aviasales.booking.dto;
 
 import com.savadanko.aviasales.booking.entity.Gender;
-import com.savadanko.aviasales.booking.entity.PassengerType;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -18,9 +17,6 @@ import java.time.LocalDate;
 public class PassengerRequest {
     @NotNull
     private Integer id;
-
-    @NotNull
-    private PassengerType type;
 
     @NotNull
     private Gender gender;
@@ -47,4 +43,3 @@ public class PassengerRequest {
     @Valid
     private LoyaltyRequest loyalty;
 }
-

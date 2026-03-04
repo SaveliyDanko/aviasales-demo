@@ -12,6 +12,7 @@ import org.springframework.data.mongodb.core.mapping.Document;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 
 @Document(collection = "flight_search_cache")
 @Data
@@ -41,6 +42,8 @@ public class FlightSearchCacheDocument {
     private String sortDir;
 
     private String payloadJson;
+    @Indexed
+    private List<String> offerIds;
     private Integer resultSize;
     private Long totalElements;
     private Integer totalPages;

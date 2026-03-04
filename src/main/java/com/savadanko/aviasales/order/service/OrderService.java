@@ -34,7 +34,9 @@ public class OrderService {
         log.info("Check order availability: offerId={}", request.getOfferId());
 
         FlightOffer offer = flightOfferRepository.findById(request.getOfferId()).orElse(null);
-        if (offer == null || !offer.isBookable()) {
+        boolean soldOutBySeats = offer != null &&
+                (offer.getPassengers() == null || offer.getPassengers().getCountBookable() <= 0);
+        if (offer == null || !offer.isBookable() || soldOutBySeats) {
             return soldOutResponse();
         }
 

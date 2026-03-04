@@ -12,7 +12,6 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 public class Passengers {
-    private int adults;
-    private int children;
-    private int infants;
+    private int totalSeats;
+    private int countBookable;
 }

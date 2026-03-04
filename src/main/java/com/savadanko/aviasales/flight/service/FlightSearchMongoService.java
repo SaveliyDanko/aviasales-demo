@@ -107,6 +107,7 @@ public class FlightSearchMongoService {
             document.setSortBy(criteria.sortBy());
             document.setSortDir(normalizeSortDir(criteria.sortDir()));
             document.setPayloadJson(toJson(response));
+            document.setOfferIds(extractOfferIds(response));
             document.setResultSize(response.getContent() == null ? 0 : response.getContent().size());
             document.setTotalElements(response.getTotalElements());
             document.setTotalPages(response.getTotalPages());
@@ -224,6 +225,17 @@ public class FlightSearchMongoService {
 
     private String toJson(FlightOfferResponseList response) throws JsonProcessingException {
         return objectMapper.writeValueAsString(response);
+    }
+
+    private List<String> extractOfferIds(FlightOfferResponseList response) {
+        if (response.getContent() == null || response.getContent().isEmpty()) {
+            return Collections.emptyList();
+        }
+        return response.getContent().stream()
+                .map(flightOffer -> flightOffer.getOfferId())
+                .filter(StringUtils::hasText)
+                .distinct()
+                .toList();
     }
 
     private String buildRoute(String origin, String destination) {

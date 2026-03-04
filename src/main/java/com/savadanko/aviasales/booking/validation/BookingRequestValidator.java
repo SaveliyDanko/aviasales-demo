@@ -26,6 +26,10 @@ public class BookingRequestValidator implements ConstraintValidator<ValidBooking
 
         List<PassengerRequest> passengers = value.getPassengers();
         if (passengers != null) {
+            if (passengers.size() > 10) {
+                addViolation(context, "passengers", "you cannot book more than 10 tickets");
+                valid = false;
+            }
             Set<Integer> passengerIds = new HashSet<>();
             for (PassengerRequest passenger : passengers) {
                 if (passenger != null && passenger.getId() != null && !passengerIds.add(passenger.getId())) {

@@ -40,6 +40,7 @@ import java.util.UUID;
 public class BookingService {
 
     private static final BigDecimal ZERO_MONEY = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+    private static final int MAX_TICKETS_PER_BOOKING = 10;
     private static final BigDecimal BAGGAGE_BASE_FEE_PER_ITEM = BigDecimal.valueOf(1500);
     private static final BigDecimal BAGGAGE_OVERWEIGHT_FEE_PER_KG = BigDecimal.valueOf(200);
     private static final int BAGGAGE_INCLUDED_WEIGHT_KG = 20;
@@ -61,17 +62,21 @@ public class BookingService {
         MoneyDto currentOfferPrice = extractCurrentOfferPrice(offer);
         MoneyDto expectedPrice = normalizeMoney(request.getExpectedPrice());
         validateExpectedPrice(expectedPrice, currentOfferPrice, request.getOfferId());
-        validatePassengerAvailability(request.getPassengers(), offer.getPassengers());
+        validateRequestedTicketCount(request.getPassengers(), offer.getPassengers(), request.getOfferId());
+        int requestedTickets = request.getPassengers().size();
+        BigDecimal baseFareAmount = scaleMoney(
+                currentOfferPrice.getAmount().multiply(BigDecimal.valueOf(requestedTickets))
+        );
 
         BookingEntity booking = BookingEntity.builder()
                 .bookingId(UUID.randomUUID().toString())
                 .offerId(request.getOfferId())
                 .status(BookingStatus.CREATED)
                 .createdAt(Instant.now())
-                .baseFareAmount(currentOfferPrice.getAmount())
+                .baseFareAmount(baseFareAmount)
                 .baggageFeeAmount(ZERO_MONEY)
                 .insuranceFeeAmount(ZERO_MONEY)
-                .totalAmount(currentOfferPrice.getAmount())
+                .totalAmount(baseFareAmount)
                 .currency(currentOfferPrice.getCurrency())
                 .contactInfo(new ContactInfoEmbeddable(
                         request.getContactInfo().getEmail(),
@@ -140,28 +145,26 @@ public class BookingService {
         }
     }
 
-    private void validatePassengerAvailability(List<PassengerRequest> passengerRequests, Passengers availablePassengers) {
+    private void validateRequestedTicketCount(
+            List<PassengerRequest> passengerRequests,
+            Passengers availablePassengers,
+            String offerId
+    ) {
+        if (passengerRequests == null || passengerRequests.isEmpty()) {
+            throw new InvalidBookingException("At least one passenger is required.");
+        }
+        if (passengerRequests.size() > MAX_TICKETS_PER_BOOKING) {
+            throw new InvalidBookingException("Cannot book more than " + MAX_TICKETS_PER_BOOKING + " tickets per booking.");
+        }
         if (availablePassengers == null) {
             throw new InvalidBookingException("Offer has no passenger availability data.");
         }
 
-        long requestedAdults = passengerRequests.stream().filter(p -> p.getType() == PassengerType.ADULT).count();
-        long requestedChildren = passengerRequests.stream().filter(p -> p.getType() == PassengerType.CHILD).count();
-        long requestedInfants = passengerRequests.stream().filter(p -> p.getType() == PassengerType.INFANT).count();
-
-        if (requestedAdults > availablePassengers.getAdults()) {
+        int requestedTickets = passengerRequests.size();
+        if (requestedTickets > availablePassengers.getCountBookable()) {
             throw new InvalidBookingException(
-                    "Not enough ADULT seats. Requested " + requestedAdults + ", available " + availablePassengers.getAdults()
-            );
-        }
-        if (requestedChildren > availablePassengers.getChildren()) {
-            throw new InvalidBookingException(
-                    "Not enough CHILD seats. Requested " + requestedChildren + ", available " + availablePassengers.getChildren()
-            );
-        }
-        if (requestedInfants > availablePassengers.getInfants()) {
-            throw new InvalidBookingException(
-                    "Not enough INFANT seats. Requested " + requestedInfants + ", available " + availablePassengers.getInfants()
+                    "Not enough available seats for offer " + offerId + ". Requested " + requestedTickets +
+                            ", available " + availablePassengers.getCountBookable()
             );
         }
     }
@@ -226,7 +229,7 @@ public class BookingService {
 
         return PassengerEntity.builder()
                 .passengerId(request.getId())
-                .type(request.getType())
+                .type(PassengerType.STANDARD)
                 .gender(request.getGender())
                 .firstName(request.getFirstName())
                 .lastName(request.getLastName())

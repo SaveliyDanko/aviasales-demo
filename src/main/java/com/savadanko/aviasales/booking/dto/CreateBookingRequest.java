@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -29,6 +30,7 @@ public class CreateBookingRequest {
     private ContactInfoRequest contactInfo;
 
     @NotEmpty
+    @Size(max = 10, message = "you cannot book more than 10 tickets")
     @Valid
     private List<PassengerRequest> passengers;
 

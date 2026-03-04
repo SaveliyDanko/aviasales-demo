@@ -31,11 +31,11 @@ public class FlightOfferSpecifications {
             List<Predicate> predicates = new ArrayList<>();
 
             predicates.add(cb.isTrue(root.get("isBookable")));
+            predicates.add(cb.greaterThan(root.get("passengers").get("countBookable"), 0));
 
             if (passengers != null && passengers > 0) {
-                Expression<Integer> adults = root.get("passengers").get("adults");
-                Expression<Integer> children = root.get("passengers").get("children");
-                predicates.add(cb.greaterThanOrEqualTo(cb.sum(adults, children), passengers));
+                Expression<Integer> countBookable = root.get("passengers").get("countBookable");
+                predicates.add(cb.greaterThanOrEqualTo(countBookable, passengers));
             }
 
             // Фильтр по максимальной цене

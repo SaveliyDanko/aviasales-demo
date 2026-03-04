@@ -83,13 +83,15 @@ public class FlightDataGenerator {
                 BigDecimal.valueOf(totalCost - taxesCost),
                 BigDecimal.valueOf(taxesCost));
 
-        // Пассажиры
-        Passengers passengers = new Passengers(1, random.nextInt(2), 0);
+        // Места в самолете
+        int totalSeats = 90 + random.nextInt(151); // 90..240
+        int countBookable = isBookable ? (1 + random.nextInt(totalSeats)) : 0;
+        Passengers passengers = new Passengers(totalSeats, countBookable);
 
         FlightOffer offer = FlightOffer.builder()
                 .offerId(offerId)
                 .source(SOURCES.get(random.nextInt(SOURCES.size())))
-                .isBookable(isBookable)
+                .isBookable(countBookable > 0)
                 .price(price)
                 .passengers(passengers)
                 .build();
