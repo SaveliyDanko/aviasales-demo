@@ -12,8 +12,8 @@ import com.savadanko.aviasales.mongo.projection.TopAirlineProjection;
 import com.savadanko.aviasales.mongo.projection.TopRouteProjection;
 import com.savadanko.aviasales.mongo.repository.FlightSearchCacheRepository;
 import com.savadanko.aviasales.mongo.repository.FlightSearchEventRepository;
+import com.savadanko.aviasales.mongo.service.MongoFailoverGuard;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.DigestUtils;
@@ -29,7 +29,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class FlightSearchMongoService {
@@ -37,6 +36,7 @@ public class FlightSearchMongoService {
     private final FlightSearchCacheRepository cacheRepository;
     private final FlightSearchEventRepository eventRepository;
     private final ObjectMapper objectMapper;
+    private final MongoFailoverGuard mongoFailoverGuard;
 
     @Value("${app.mongo.flight-cache-ttl-minutes:15}")
     private long flightCacheTtlMinutes;
@@ -63,6 +63,10 @@ public class FlightSearchMongoService {
     }
 
     public Optional<FlightOfferResponseList> findCachedResult(String cacheKey) {
+        if (!mongoFailoverGuard.canUseMongo()) {
+            return Optional.empty();
+        }
+
         try {
             Optional<FlightSearchCacheDocument> cached = cacheRepository.findByCacheKey(cacheKey);
             if (cached.isEmpty()) {
@@ -81,12 +85,16 @@ public class FlightSearchMongoService {
             );
             return Optional.of(response);
         } catch (Exception e) {
-            log.warn("Mongo cache read failed, fallback to SQL search. cacheKey={}", cacheKey, e);
+            mongoFailoverGuard.recordFailure("cache read", e);
             return Optional.empty();
         }
     }
 
     public void cacheResult(String cacheKey, FlightSearchCriteria criteria, FlightOfferResponseList response) {
+        if (!mongoFailoverGuard.canUseMongo()) {
+            return;
+        }
+
         try {
             Instant now = Instant.now();
             FlightSearchCacheDocument document = cacheRepository.findByCacheKey(cacheKey)
@@ -118,7 +126,7 @@ public class FlightSearchMongoService {
 
             cacheRepository.save(document);
         } catch (Exception e) {
-            log.warn("Mongo cache write failed. cacheKey={}", cacheKey, e);
+            mongoFailoverGuard.recordFailure("cache write", e);
         }
     }
 
@@ -129,6 +137,10 @@ public class FlightSearchMongoService {
             boolean cacheHit,
             long responseTimeMs
     ) {
+        if (!mongoFailoverGuard.canUseMongo()) {
+            return;
+        }
+
         try {
             FlightSearchEventDocument document = FlightSearchEventDocument.builder()
                     .searchedAt(Instant.now())
@@ -154,13 +166,17 @@ public class FlightSearchMongoService {
 
             eventRepository.save(document);
         } catch (Exception e) {
-            log.warn("Mongo search event write failed. cacheKey={}", cacheKey, e);
+            mongoFailoverGuard.recordFailure("search event write", e);
         }
     }
 
     public FlightSearchAnalyticsSummaryResponse getSummary(int days) {
         int normalizedDays = normalizeDays(days);
         Instant from = Instant.now().minus(Duration.ofDays(normalizedDays));
+
+        if (!mongoFailoverGuard.canUseMongo()) {
+            return new FlightSearchAnalyticsSummaryResponse(normalizedDays, 0L, 0L, 0.0);
+        }
 
         try {
             long totalSearches = eventRepository.countBySearchedAtGreaterThanEqual(from);
@@ -179,7 +195,7 @@ public class FlightSearchMongoService {
                     cacheHitRate
             );
         } catch (Exception e) {
-            log.warn("Mongo summary aggregation failed, returning empty summary.", e);
+            mongoFailoverGuard.recordFailure("summary aggregation", e);
             return new FlightSearchAnalyticsSummaryResponse(normalizedDays, 0L, 0L, 0.0);
         }
     }
@@ -188,6 +204,10 @@ public class FlightSearchMongoService {
         int normalizedDays = normalizeDays(days);
         int normalizedLimit = normalizeLimit(limit);
         Instant from = Instant.now().minus(Duration.ofDays(normalizedDays));
+
+        if (!mongoFailoverGuard.canUseMongo()) {
+            return Collections.emptyList();
+        }
 
         try {
             List<TopRouteProjection> topRoutes = eventRepository.findTopRoutes(from, normalizedLimit);
@@ -199,7 +219,7 @@ public class FlightSearchMongoService {
                     ))
                     .toList();
         } catch (Exception e) {
-            log.warn("Mongo route aggregation failed.", e);
+            mongoFailoverGuard.recordFailure("top routes aggregation", e);
             return Collections.emptyList();
         }
     }
@@ -208,6 +228,10 @@ public class FlightSearchMongoService {
         int normalizedDays = normalizeDays(days);
         int normalizedLimit = normalizeLimit(limit);
         Instant from = Instant.now().minus(Duration.ofDays(normalizedDays));
+
+        if (!mongoFailoverGuard.canUseMongo()) {
+            return Collections.emptyList();
+        }
 
         try {
             List<TopAirlineProjection> topAirlines = eventRepository.findTopAirlines(from, normalizedLimit);
@@ -218,7 +242,7 @@ public class FlightSearchMongoService {
                     ))
                     .toList();
         } catch (Exception e) {
-            log.warn("Mongo airline aggregation failed.", e);
+            mongoFailoverGuard.recordFailure("top airlines aggregation", e);
             return Collections.emptyList();
         }
     }

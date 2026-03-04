@@ -7,5 +7,4 @@ import org.mapstruct.Mapper;
 @Mapper(componentModel = "spring")
 public interface FlightOfferMapper {
     FlightOfferResponse toDto(FlightOffer flightOffer);
-    FlightOffer toDomain(FlightOfferResponse flightOfferResponse);
 }

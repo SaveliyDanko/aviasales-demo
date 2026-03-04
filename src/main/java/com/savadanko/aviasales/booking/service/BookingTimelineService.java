@@ -4,9 +4,9 @@ import com.savadanko.aviasales.booking.dto.BookingTimelineEventResponse;
 import com.savadanko.aviasales.booking.entity.BookingEntity;
 import com.savadanko.aviasales.mongo.document.BookingEventDocument;
 import com.savadanko.aviasales.mongo.repository.BookingEventRepository;
+import com.savadanko.aviasales.mongo.service.MongoFailoverGuard;
 import com.savadanko.aviasales.payment.entity.PaymentTransactionEntity;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -14,7 +14,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class BookingTimelineService {
@@ -23,8 +22,13 @@ public class BookingTimelineService {
     private static final String PAYMENT_PROCESSED = "PAYMENT_PROCESSED";
 
     private final BookingEventRepository bookingEventRepository;
+    private final MongoFailoverGuard mongoFailoverGuard;
 
     public void logBookingCreated(BookingEntity booking) {
+        if (!mongoFailoverGuard.canUseMongo()) {
+            return;
+        }
+
         try {
             Map<String, Object> metadata = new HashMap<>();
             metadata.put("passengersCount", booking.getPassengers() == null ? 0 : booking.getPassengers().size());
@@ -47,11 +51,15 @@ public class BookingTimelineService {
 
             bookingEventRepository.save(event);
         } catch (Exception e) {
-            log.warn("Unable to write booking creation event to Mongo. bookingId={}", booking.getBookingId(), e);
+            mongoFailoverGuard.recordFailure("booking event write", e);
         }
     }
 
     public void logPaymentProcessed(BookingEntity booking, PaymentTransactionEntity paymentTransaction) {
+        if (!mongoFailoverGuard.canUseMongo()) {
+            return;
+        }
+
         try {
             Map<String, Object> metadata = new HashMap<>();
             if (paymentTransaction.getErrorCode() != null) {
@@ -77,21 +85,30 @@ public class BookingTimelineService {
 
             bookingEventRepository.save(event);
         } catch (Exception e) {
-            log.warn("Unable to write payment event to Mongo. bookingId={}", booking.getBookingId(), e);
+            mongoFailoverGuard.recordFailure("payment event write", e);
         }
     }
 
     public List<BookingTimelineEventResponse> getBookingTimeline(String bookingId) {
-        return bookingEventRepository.findByBookingIdOrderByCreatedAtAsc(bookingId).stream()
-                .map(event -> new BookingTimelineEventResponse(
-                        event.getEventType(),
-                        event.getBookingStatus(),
-                        event.getPaymentStatus(),
-                        event.getTransactionId(),
-                        event.getMessage(),
-                        event.getMetadata(),
-                        event.getCreatedAt()
-                ))
-                .toList();
+        if (!mongoFailoverGuard.canUseMongo()) {
+            return List.of();
+        }
+
+        try {
+            return bookingEventRepository.findByBookingIdOrderByCreatedAtAsc(bookingId).stream()
+                    .map(event -> new BookingTimelineEventResponse(
+                            event.getEventType(),
+                            event.getBookingStatus(),
+                            event.getPaymentStatus(),
+                            event.getTransactionId(),
+                            event.getMessage(),
+                            event.getMetadata(),
+                            event.getCreatedAt()
+                    ))
+                    .toList();
+        } catch (Exception e) {
+            mongoFailoverGuard.recordFailure("booking timeline read", e);
+            return List.of();
+        }
     }
 }
