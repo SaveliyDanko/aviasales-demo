@@ -16,6 +16,7 @@ import com.savadanko.aviasales.payment.gateway.PaymentGatewayResult;
 import com.savadanko.aviasales.payment.mapper.PaymentMapper;
 import com.savadanko.aviasales.payment.repository.PaymentRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,14 +30,22 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class PaymentService {
 
-    private static final String SUCCESS_MESSAGE = "The payment has been completed, expect a ticket in the mail.";
-    private static final String FAILURE_MESSAGE = "There are not enough funds on the card. Please try another card.";
+    private static final String SUCCESS_MESSAGE =
+            "The payment has been completed, expect a ticket in the mail.";
+    private static final String FAILURE_MESSAGE =
+            "There are not enough funds on the card. Please try another card.";
+    private static final String EXPIRED_MESSAGE =
+            "Payment time has expired. Please create a new booking.";
 
     private final PaymentRepository paymentRepository;
     private final BookingRepository bookingRepository;
     private final BookingTimelineService bookingTimelineService;
     private final PaymentGatewayAdapter paymentGatewayAdapter;
     private final PaymentMapper paymentMapper;
+    private final ApplicationEventPublisher eventPublisher;
+
+    private final PaymentsProperties paymentsProperties;
+    private final Clock clock;
 
     @Transactional
     public PaymentProcessResponse processPayment(PaymentProcessRequest request) {
@@ -48,6 +57,27 @@ public class PaymentService {
         }
         if (booking.getTotalAmount() == null || booking.getCurrency() == null) {
             throw new InvalidPaymentException("Booking has no payable amount: " + booking.getBookingId());
+        }
+
+        Instant now = Instant.now(clock);
+        if (isPaymentWindowExpired(booking, now)) {
+            booking.setStatus(BookingStatus.EXPIRED);
+            bookingRepository.save(booking);
+
+            PaymentTransactionEntity paymentTransaction = buildBaseEntity(request);
+            paymentTransaction.setStatus(PaymentStatus.FAILED);
+            paymentTransaction.setTransactionId("tx-expired-" + UUID.randomUUID());
+            paymentTransaction.setErrorCode("PAYMENT_EXPIRED");
+            paymentTransaction.setMessage(EXPIRED_MESSAGE);
+
+            PaymentTransactionEntity saved = paymentRepository.save(paymentTransaction);
+            PaymentProcessResponse response = paymentMapper.toResponse(saved);
+
+            response.setTransactionId(null);
+
+            response.setBookingStatus(booking.getStatus());
+
+            return response;
         }
 
         PaymentGatewayResult gatewayResult = paymentGatewayAdapter.process(request.getPayment());
@@ -84,7 +114,7 @@ public class PaymentService {
     private PaymentTransactionEntity buildBaseEntity(PaymentProcessRequest request, BookingEntity booking) {
         return PaymentTransactionEntity.builder()
                 .bookingId(request.getBookingId())
-                .createdAt(Instant.now())
+                .createdAt(Instant.now(clock))
                 .paymentDetails(new PaymentDetailsEmbeddable(
                         scaleMoney(booking.getTotalAmount()),
                         booking.getCurrency().toUpperCase(Locale.ROOT),
