@@ -17,6 +17,7 @@ import com.savadanko.aviasales.booking.entity.PassengerType;
 import com.savadanko.aviasales.booking.exception.InvalidBookingException;
 import com.savadanko.aviasales.booking.mapper.BookingMapper;
 import com.savadanko.aviasales.booking.repository.BookingRepository;
+import com.savadanko.aviasales.config.PaymentsProperties;
 import com.savadanko.aviasales.flight.FlightOffer;
 import com.savadanko.aviasales.flight.model.Passengers;
 import com.savadanko.aviasales.flight.model.Price;
@@ -28,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
@@ -50,6 +52,8 @@ public class BookingService {
     private final FlightOfferRepository flightOfferRepository;
     private final BookingMapper bookingMapper;
     private final BookingTimelineService bookingTimelineService;
+    private final PaymentsProperties paymentsProperties;
+    private final Clock clock;
 
     @Transactional
     public BookingResponse createBooking(CreateBookingRequest request) {
@@ -72,7 +76,7 @@ public class BookingService {
                 .bookingId(UUID.randomUUID().toString())
                 .offerId(request.getOfferId())
                 .status(BookingStatus.CREATED)
-                .createdAt(Instant.now())
+                .createdAt(Instant.now(clock))
                 .baseFareAmount(baseFareAmount)
                 .baggageFeeAmount(ZERO_MONEY)
                 .insuranceFeeAmount(ZERO_MONEY)
@@ -130,7 +134,9 @@ public class BookingService {
 
         BookingEntity savedBooking = bookingRepository.save(booking);
         bookingTimelineService.logBookingCreated(savedBooking);
-        return bookingMapper.toResponse(savedBooking);
+        BookingResponse response = bookingMapper.toResponse(savedBooking);
+        response.setPaymentExpiresAt(calculatePaymentExpiresAt(savedBooking.getCreatedAt()));
+        return response;
     }
 
     private void validateExpectedPrice(MoneyDto expectedPrice, MoneyDto currentPrice, String offerId) {
@@ -216,6 +222,13 @@ public class BookingService {
 
     private BigDecimal scaleMoney(BigDecimal value) {
         return value.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private Instant calculatePaymentExpiresAt(Instant createdAt) {
+        if (createdAt == null || paymentsProperties.getBookingPaymentTtl() == null) {
+            return null;
+        }
+        return createdAt.plus(paymentsProperties.getBookingPaymentTtl());
     }
 
     private PassengerEntity mapPassenger(PassengerRequest request) {

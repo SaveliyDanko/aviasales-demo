@@ -36,6 +36,28 @@ export MONGODB_URI=mongodb://localhost:27017/aviasales
 4. Process payment for booked total:
 - `POST /api/v1/payments/process`
 
+## Payment window and e-mail
+Application loads `.env` automatically (`spring.config.import=optional:file:.env[.properties]`).
+
+1. Copy template:
+```bash
+cp .env.example .env
+```
+2. Set payment TTL:
+- `PAYMENTS_BOOKING_PAYMENT_TTL=15m` (example: 15 minutes)
+3. Configure SMTP in `.env`:
+- `spring.mail.host`
+- `spring.mail.port`
+- `spring.mail.username`
+- `spring.mail.password`
+- `APP_MAIL_ENABLED=true`
+- `APP_MAIL_FROM=no-reply@example.com`
+
+Behavior:
+- after booking creation, payment is accepted only until `createdAt + payments.booking-payment-ttl`;
+- if TTL is exceeded, payment is rejected and booking status becomes `EXPIRED`;
+- after successful payment, an email is sent to `contactInfo.email`.
+
 ### Seats model
 `FlightOffer.passengers` now contains:
 - `totalSeats`

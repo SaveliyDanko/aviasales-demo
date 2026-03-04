@@ -4,6 +4,12 @@ import com.savadanko.aviasales.booking.entity.BookingEntity;
 import com.savadanko.aviasales.booking.entity.BookingStatus;
 import com.savadanko.aviasales.booking.repository.BookingRepository;
 import com.savadanko.aviasales.booking.service.BookingTimelineService;
+import com.savadanko.aviasales.config.PaymentsProperties;
+import com.savadanko.aviasales.flight.FlightOffer;
+import com.savadanko.aviasales.flight.model.Passengers;
+import com.savadanko.aviasales.flight.repository.FlightOfferRepository;
+import com.savadanko.aviasales.flight.service.FlightSearchCacheInvalidationService;
+import com.savadanko.aviasales.mail.PaymentSucceededEvent;
 import com.savadanko.aviasales.payment.dto.PaymentProcessRequest;
 import com.savadanko.aviasales.payment.dto.PaymentProcessResponse;
 import com.savadanko.aviasales.payment.entity.ClientInfoEmbeddable;
@@ -22,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.UUID;
@@ -66,13 +73,14 @@ public class PaymentService {
             booking.setStatus(BookingStatus.EXPIRED);
             bookingRepository.save(booking);
 
-            PaymentTransactionEntity paymentTransaction = buildBaseEntity(request);
+            PaymentTransactionEntity paymentTransaction = buildBaseEntity(request, booking);
             paymentTransaction.setStatus(PaymentStatus.FAILED);
             paymentTransaction.setTransactionId("tx-expired-" + UUID.randomUUID());
             paymentTransaction.setErrorCode("PAYMENT_EXPIRED");
             paymentTransaction.setMessage(EXPIRED_MESSAGE);
 
             PaymentTransactionEntity saved = paymentRepository.save(paymentTransaction);
+            bookingTimelineService.logPaymentProcessed(booking, saved);
             PaymentProcessResponse response = paymentMapper.toResponse(saved);
 
             response.setTransactionId(null);
@@ -106,6 +114,7 @@ public class PaymentService {
 
             PaymentTransactionEntity saved = paymentRepository.save(paymentTransaction);
             bookingTimelineService.logPaymentProcessed(booking, saved);
+            publishPaymentSucceededEvent(booking, saved);
             PaymentProcessResponse response = paymentMapper.toResponse(saved);
             response.setBookingStatus(booking.getStatus());
             return response;
@@ -149,6 +158,13 @@ public class PaymentService {
         return value.setScale(2, RoundingMode.HALF_UP);
     }
 
+    private boolean isPaymentWindowExpired(BookingEntity booking, Instant now) {
+        if (booking.getCreatedAt() == null || paymentsProperties.getBookingPaymentTtl() == null) {
+            return false;
+        }
+        return now.isAfter(booking.getCreatedAt().plus(paymentsProperties.getBookingPaymentTtl()));
+    }
+
     private void reserveSeats(FlightOffer offer, int requestedSeats) {
         Passengers passengers = offer.getPassengers();
         if (passengers == null) {
@@ -176,5 +192,14 @@ public class PaymentService {
         int restored = Math.min(maxSeats, passengers.getCountBookable() + releasedSeats);
         passengers.setCountBookable(restored);
         offer.setBookable(restored > 0);
+    }
+
+    private void publishPaymentSucceededEvent(BookingEntity booking, PaymentTransactionEntity paymentTransaction) {
+        String email = booking.getContactInfo() == null ? null : booking.getContactInfo().getEmail();
+        eventPublisher.publishEvent(new PaymentSucceededEvent(
+                booking.getBookingId(),
+                email,
+                paymentTransaction.getTransactionId()
+        ));
     }
 }

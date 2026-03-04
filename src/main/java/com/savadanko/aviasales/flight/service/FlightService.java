@@ -122,6 +122,24 @@ public class FlightService {
     }
 
     @Transactional(readOnly = true)
+    public FlightOfferResponseList search() {
+        List<FlightOfferResponse> content = flightOfferRepository.findAll(
+                        Sort.by(Sort.Direction.ASC, "offerId")
+                ).stream()
+                .map(mapper::toDto)
+                .toList();
+
+        FlightOfferResponseList response = new FlightOfferResponseList();
+        response.setContent(content);
+        response.setPageNumber(0);
+        response.setPageSize(content.size());
+        response.setTotalElements((long) content.size());
+        response.setTotalPages(content.isEmpty() ? 0 : 1);
+        response.setLastPage(true);
+        return response;
+    }
+
+    @Transactional(readOnly = true)
     public List<FlightSearchRouteStatResponse> getTopRoutes(int days, int limit) {
         return flightSearchMongoService.getTopRoutes(days, limit);
     }

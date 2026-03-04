@@ -15,6 +15,7 @@ public class BookingResponse {
     private String bookingId;
     private BookingStatus status;
     private Instant createdAt;
+    private Instant paymentExpiresAt;
     private String offerId;
     private BigDecimal baseFareAmount;
     private BigDecimal baggageFeeAmount;

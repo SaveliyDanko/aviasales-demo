@@ -8,5 +8,5 @@ import java.time.Duration;
 @Data
 @ConfigurationProperties(prefix = "payments")
 public class PaymentsProperties {
-    private Duration bookingPaymentTtl = Duration.ofSeconds(30);
+    private Duration bookingPaymentTtl = Duration.ofSeconds(15);
 }

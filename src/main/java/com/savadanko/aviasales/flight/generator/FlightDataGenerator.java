@@ -1,26 +1,46 @@
 package com.savadanko.aviasales.flight.generator;
 
-import com.savadanko.aviasales.flight.*;
-import com.savadanko.aviasales.flight.model.*;
+import com.savadanko.aviasales.flight.FlightOffer;
+import com.savadanko.aviasales.flight.Itinerary;
+import com.savadanko.aviasales.flight.Segment;
+import com.savadanko.aviasales.flight.dto.FlightOfferResponse;
+import com.savadanko.aviasales.flight.dto.ItineraryResponse;
+import com.savadanko.aviasales.flight.model.Aircraft;
+import com.savadanko.aviasales.flight.model.Baggage;
+import com.savadanko.aviasales.flight.model.BaggageDetails;
+import com.savadanko.aviasales.flight.model.Carrier;
+import com.savadanko.aviasales.flight.model.Location;
+import com.savadanko.aviasales.flight.model.Passengers;
+import com.savadanko.aviasales.flight.model.Price;
 import com.savadanko.aviasales.flight.repository.FlightOfferRepository;
+import com.savadanko.aviasales.flight.service.ExternalFlightSourceService;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.UUID;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class FlightDataGenerator {
 
+    private static final int GENERATED_FALLBACK_OFFERS = 5;
+
     private final FlightOfferRepository flightOfferRepository;
+    private final ExternalFlightSourceService externalFlightSourceService;
     private final Random random = new Random();
 
     // --- Реалистичные словари для РФ ---
@@ -59,15 +79,20 @@ public class FlightDataGenerator {
             return;
         }
 
-        log.info("Запуск генерации 1000 реалистичных рейсов по РФ...");
-        List<FlightOffer> offers = new ArrayList<>();
+        log.info("Запуск генерации и импорта рейсов...");
+        List<FlightOffer> offers = new ArrayList<>(importExternalOffers());
+        int importedCount = offers.size();
 
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < GENERATED_FALLBACK_OFFERS; i++) {
             offers.add(generateSingleOffer());
         }
 
         flightOfferRepository.saveAll(offers);
-        log.info("Успешно сгенерировано и сохранено 1000 рейсов.");
+        log.info("Успешно сохранено {} рейсов (импортировано: {}, локально сгенерировано: {}).",
+                offers.size(),
+                importedCount,
+                GENERATED_FALLBACK_OFFERS
+        );
     }
 
     private FlightOffer generateSingleOffer() {
@@ -163,5 +188,146 @@ public class FlightDataGenerator {
             selected = AIRPORTS.get(random.nextInt(AIRPORTS.size()));
         } while (selected.equals(exclude));
         return selected;
+    }
+
+    private List<FlightOffer> importExternalOffers() {
+        List<FlightOfferResponse> externalOffers = externalFlightSourceService.fetchFlights();
+        if (externalOffers.isEmpty()) {
+            return List.of();
+        }
+
+        Map<String, FlightOffer> uniqueOffers = new LinkedHashMap<>();
+        for (FlightOfferResponse externalOffer : externalOffers) {
+            if (!isValidExternalOffer(externalOffer)) {
+                continue;
+            }
+            if (!uniqueOffers.containsKey(externalOffer.getOfferId())) {
+                uniqueOffers.put(externalOffer.getOfferId(), mapExternalOffer(externalOffer));
+            }
+        }
+
+        return new ArrayList<>(uniqueOffers.values());
+    }
+
+    private boolean isValidExternalOffer(FlightOfferResponse offer) {
+        return offer != null
+                && StringUtils.hasText(offer.getOfferId())
+                && offer.getPrice() != null
+                && offer.getPrice().getTotal() != null
+                && StringUtils.hasText(offer.getPrice().getCurrency());
+    }
+
+    private FlightOffer mapExternalOffer(FlightOfferResponse externalOffer) {
+        Passengers passengers = normalizePassengers(externalOffer.getPassengers(), externalOffer.isBookable());
+
+        FlightOffer offer = FlightOffer.builder()
+                .offerId(externalOffer.getOfferId())
+                .source(StringUtils.hasText(externalOffer.getSource()) ? externalOffer.getSource() : "EXTERNAL_SERVICE")
+                .isBookable(externalOffer.isBookable() && passengers.getCountBookable() > 0)
+                .price(copyPrice(externalOffer.getPrice()))
+                .passengers(passengers)
+                .build();
+
+        if (externalOffer.getItineraries() == null) {
+            return offer;
+        }
+
+        for (ItineraryResponse itineraryResponse : externalOffer.getItineraries()) {
+            Itinerary itinerary = Itinerary.builder()
+                    .direction(itineraryResponse.getDirection())
+                    .durationMinutes(itineraryResponse.getDurationMinutes())
+                    .stops(itineraryResponse.getStops())
+                    .build();
+
+            if (itineraryResponse.getSegments() != null) {
+                for (Segment externalSegment : itineraryResponse.getSegments()) {
+                    itinerary.addSegment(copySegment(externalSegment));
+                }
+            }
+
+            offer.addItinerary(itinerary);
+        }
+
+        return offer;
+    }
+
+    private Passengers normalizePassengers(Passengers source, boolean isBookable) {
+        if (source == null) {
+            int fallbackBookable = isBookable ? 1 : 0;
+            return new Passengers(Math.max(1, fallbackBookable), fallbackBookable);
+        }
+
+        int totalSeats = Math.max(0, source.getTotalSeats());
+        int countBookable = Math.max(0, source.getCountBookable());
+        if (totalSeats == 0 && countBookable > 0) {
+            totalSeats = countBookable;
+        }
+        if (countBookable > totalSeats) {
+            countBookable = totalSeats;
+        }
+        if (totalSeats == 0) {
+            totalSeats = 1;
+            countBookable = isBookable ? 1 : 0;
+        }
+
+        return new Passengers(totalSeats, countBookable);
+    }
+
+    private Price copyPrice(Price source) {
+        return new Price(
+                source.getCurrency(),
+                source.getTotal(),
+                source.getBase(),
+                source.getTaxes()
+        );
+    }
+
+    private Segment copySegment(Segment source) {
+        return Segment.builder()
+                .segmentId("ext-seg-" + UUID.randomUUID().toString().substring(0, 12))
+                .departure(copyLocation(source.getDeparture()))
+                .arrival(copyLocation(source.getArrival()))
+                .carrier(copyCarrier(source.getCarrier()))
+                .flightNumber(source.getFlightNumber())
+                .aircraft(copyAircraft(source.getAircraft()))
+                .baggage(copyBaggage(source.getBaggage()))
+                .flightClass(source.getFlightClass())
+                .cabinClass(source.getCabinClass())
+                .build();
+    }
+
+    private Location copyLocation(Location source) {
+        if (source == null) {
+            return null;
+        }
+        return new Location(source.getIataCode(), source.getCity(), source.getTerminal(), source.getAt());
+    }
+
+    private Carrier copyCarrier(Carrier source) {
+        if (source == null) {
+            return null;
+        }
+        return new Carrier(source.getOperatingName());
+    }
+
+    private Aircraft copyAircraft(Aircraft source) {
+        if (source == null) {
+            return null;
+        }
+        return new Aircraft(source.getCode(), source.getName());
+    }
+
+    private Baggage copyBaggage(Baggage source) {
+        if (source == null) {
+            return null;
+        }
+        return new Baggage(copyBaggageDetails(source.getChecked()), copyBaggageDetails(source.getCabin()));
+    }
+
+    private BaggageDetails copyBaggageDetails(BaggageDetails source) {
+        if (source == null) {
+            return null;
+        }
+        return new BaggageDetails(source.getAllowance(), source.getWeight(), source.getUnit());
     }
 }

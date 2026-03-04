@@ -62,6 +62,11 @@ public class FlightController {
         return ResponseEntity.ok(result);
     }
 
+    @GetMapping("/flights-all")
+    public ResponseEntity<FlightOfferResponseList> searchFlights() {
+        return ResponseEntity.ok(flightService.search());
+    }
+
     @GetMapping("/flights/analytics/summary")
     public ResponseEntity<FlightSearchAnalyticsSummaryResponse> getSearchAnalyticsSummary(
             @RequestParam(defaultValue = "30") int days
