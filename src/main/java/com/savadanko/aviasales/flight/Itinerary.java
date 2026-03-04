@@ -21,7 +21,7 @@ public class Itinerary {
     private FlightOffer flightOffer;
 
     @Column(name = "direction")
-    private String direction; // Можно заменить на Enum (OUTBOUND, INBOUND)
+    private String direction;
 
     @Column(name = "duration_minutes")
     private int durationMinutes;
