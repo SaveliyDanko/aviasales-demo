@@ -10,7 +10,7 @@ description = 'Aviasales project for Spring Boot'
 
 java {
 	toolchain {
-		languageVersion = JavaLanguageVersion.of(21)
+		languageVersion = JavaLanguageVersion.of(17)
 	}
 }
 
@@ -27,6 +27,7 @@ repositories {
 dependencies {
 	// JPA
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	implementation 'org.springframework.boot:spring-boot-starter-data-mongodb'
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
 
 	// Lombok
@@ -36,9 +37,16 @@ dependencies {
 	// Hibernate Validator
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 
+	// JSON
+	implementation 'com.fasterxml.jackson.core:jackson-databind'
+	implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
+
 	// H2
 	runtimeOnly 'com.h2database:h2'
 	implementation 'org.springframework.boot:spring-boot-h2console'
+
+	// PostgreSQL
+	implementation "org.postgresql:postgresql:42.7.10"
 
 	// MapStruct
 	implementation "org.mapstruct:mapstruct:1.6.3"

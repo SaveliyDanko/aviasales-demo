@@ -1,6 +1,9 @@
 package com.savadanko.aviasales.flight.controller;
 
 import com.savadanko.aviasales.flight.dto.FlightOfferResponseList;
+import com.savadanko.aviasales.flight.dto.FlightSearchAirlineStatResponse;
+import com.savadanko.aviasales.flight.dto.FlightSearchAnalyticsSummaryResponse;
+import com.savadanko.aviasales.flight.dto.FlightSearchRouteStatResponse;
 import com.savadanko.aviasales.flight.service.FlightService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -9,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -56,5 +60,28 @@ public class FlightController {
         );
 
         return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/flights/analytics/summary")
+    public ResponseEntity<FlightSearchAnalyticsSummaryResponse> getSearchAnalyticsSummary(
+            @RequestParam(defaultValue = "30") int days
+    ) {
+        return ResponseEntity.ok(flightService.getSearchAnalyticsSummary(days));
+    }
+
+    @GetMapping("/flights/analytics/top-routes")
+    public ResponseEntity<List<FlightSearchRouteStatResponse>> getTopRoutes(
+            @RequestParam(defaultValue = "30") int days,
+            @RequestParam(defaultValue = "10") int limit
+    ) {
+        return ResponseEntity.ok(flightService.getTopRoutes(days, limit));
+    }
+
+    @GetMapping("/flights/analytics/top-airlines")
+    public ResponseEntity<List<FlightSearchAirlineStatResponse>> getTopAirlines(
+            @RequestParam(defaultValue = "30") int days,
+            @RequestParam(defaultValue = "10") int limit
+    ) {
+        return ResponseEntity.ok(flightService.getTopAirlines(days, limit));
     }
 }

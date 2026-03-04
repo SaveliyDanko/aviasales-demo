@@ -17,7 +17,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Locale;
-import java.util.UUID;
 
 @Slf4j
 @Service
@@ -93,4 +92,3 @@ public class OrderService {
         return value.setScale(2, RoundingMode.HALF_UP);
     }
 }
-

@@ -3,6 +3,7 @@ package com.savadanko.aviasales.payment.service;
 import com.savadanko.aviasales.booking.entity.BookingEntity;
 import com.savadanko.aviasales.booking.entity.BookingStatus;
 import com.savadanko.aviasales.booking.repository.BookingRepository;
+import com.savadanko.aviasales.booking.service.BookingTimelineService;
 import com.savadanko.aviasales.payment.dto.PaymentProcessRequest;
 import com.savadanko.aviasales.payment.dto.PaymentProcessResponse;
 import com.savadanko.aviasales.payment.entity.ClientInfoEmbeddable;
@@ -18,7 +19,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
+import java.util.Locale;
 import java.util.UUID;
 
 @Service
@@ -30,6 +34,7 @@ public class PaymentService {
 
     private final PaymentRepository paymentRepository;
     private final BookingRepository bookingRepository;
+    private final BookingTimelineService bookingTimelineService;
     private final PaymentGatewayAdapter paymentGatewayAdapter;
     private final PaymentMapper paymentMapper;
 
@@ -41,9 +46,12 @@ public class PaymentService {
         if (booking.getStatus() != BookingStatus.CREATED) {
             throw new InvalidPaymentException("Booking is not in payable state: " + booking.getStatus());
         }
+        if (booking.getTotalAmount() == null || booking.getCurrency() == null) {
+            throw new InvalidPaymentException("Booking has no payable amount: " + booking.getBookingId());
+        }
 
         PaymentGatewayResult gatewayResult = paymentGatewayAdapter.process(request.getPayment());
-        PaymentTransactionEntity paymentTransaction = buildBaseEntity(request);
+        PaymentTransactionEntity paymentTransaction = buildBaseEntity(request, booking);
 
         if (gatewayResult.isSuccess()) {
             booking.setStatus(BookingStatus.TICKETING_IN_PROGRESS);
@@ -54,6 +62,7 @@ public class PaymentService {
             paymentTransaction.setMessage(SUCCESS_MESSAGE);
 
             PaymentTransactionEntity saved = paymentRepository.save(paymentTransaction);
+            bookingTimelineService.logPaymentProcessed(booking, saved);
             PaymentProcessResponse response = paymentMapper.toResponse(saved);
             response.setBookingStatus(booking.getStatus());
             return response;
@@ -65,19 +74,20 @@ public class PaymentService {
         paymentTransaction.setMessage(FAILURE_MESSAGE);
 
         PaymentTransactionEntity saved = paymentRepository.save(paymentTransaction);
+        bookingTimelineService.logPaymentProcessed(booking, saved);
         PaymentProcessResponse response = paymentMapper.toResponse(saved);
         response.setTransactionId(null);
-        response.setBookingStatus(null);
+        response.setBookingStatus(booking.getStatus());
         return response;
     }
 
-    private PaymentTransactionEntity buildBaseEntity(PaymentProcessRequest request) {
+    private PaymentTransactionEntity buildBaseEntity(PaymentProcessRequest request, BookingEntity booking) {
         return PaymentTransactionEntity.builder()
                 .bookingId(request.getBookingId())
                 .createdAt(Instant.now())
                 .paymentDetails(new PaymentDetailsEmbeddable(
-                        request.getPayment().getAmount(),
-                        request.getPayment().getCurrency(),
+                        scaleMoney(booking.getTotalAmount()),
+                        booking.getCurrency().toUpperCase(Locale.ROOT),
                         request.getPayment().getPaymentToken(),
                         request.getPayment().getSaveCard(),
                         request.getPayment().getPaymentMethod()
@@ -88,5 +98,9 @@ public class PaymentService {
                         request.getClientInfo().getReturnUrl()
                 ))
                 .build();
+    }
+
+    private BigDecimal scaleMoney(BigDecimal value) {
+        return value.setScale(2, RoundingMode.HALF_UP);
     }
 }

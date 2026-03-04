@@ -15,6 +15,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -47,6 +48,21 @@ public class BookingEntity {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    @Column(name = "base_fare_amount", precision = 19, scale = 2)
+    private BigDecimal baseFareAmount;
+
+    @Column(name = "baggage_fee_amount", precision = 19, scale = 2)
+    private BigDecimal baggageFeeAmount;
+
+    @Column(name = "insurance_fee_amount", precision = 19, scale = 2)
+    private BigDecimal insuranceFeeAmount;
+
+    @Column(name = "total_amount", precision = 19, scale = 2)
+    private BigDecimal totalAmount;
+
+    @Column(name = "currency", length = 3)
+    private String currency;
+
     @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<PassengerEntity> passengers = new ArrayList<>();
@@ -56,4 +72,3 @@ public class BookingEntity {
         passenger.setBooking(this);
     }
 }
-

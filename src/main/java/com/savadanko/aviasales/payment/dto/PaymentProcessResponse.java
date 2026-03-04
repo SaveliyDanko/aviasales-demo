@@ -7,6 +7,8 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
+
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @Data
 @NoArgsConstructor
@@ -15,6 +17,8 @@ public class PaymentProcessResponse {
     private PaymentStatus status;
     private String transactionId;
     private BookingStatus bookingStatus;
+    private BigDecimal chargedAmount;
+    private String chargedCurrency;
     private String errorCode;
     private String message;
 }

@@ -3,6 +3,9 @@ package com.savadanko.aviasales.flight.service;
 import com.savadanko.aviasales.flight.FlightOffer;
 import com.savadanko.aviasales.flight.dto.FlightOfferResponse;
 import com.savadanko.aviasales.flight.dto.FlightOfferResponseList;
+import com.savadanko.aviasales.flight.dto.FlightSearchAirlineStatResponse;
+import com.savadanko.aviasales.flight.dto.FlightSearchAnalyticsSummaryResponse;
+import com.savadanko.aviasales.flight.dto.FlightSearchRouteStatResponse;
 import com.savadanko.aviasales.flight.mapper.FlightOfferMapper;
 import com.savadanko.aviasales.flight.repository.FlightOfferRepository;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -25,7 +29,8 @@ import java.util.List;
 public class FlightService {
 
     private final FlightOfferRepository flightOfferRepository;
-    private  final FlightOfferMapper mapper;
+    private final FlightOfferMapper mapper;
+    private final FlightSearchMongoService flightSearchMongoService;
 
     @Transactional(readOnly = true)
     public FlightOfferResponseList searchAndFilterFlights(
@@ -48,7 +53,35 @@ public class FlightService {
                 origin, destination, departureDate, passengers, maxStops, maxPrice, baggage, airline, maxDuration
         );
 
-        Pageable pageable = createPageable(pageNumber, pageSize, sortBy, sortDir);
+        SearchPageOptions pageOptions = createPageOptions(pageNumber, pageSize, sortBy, sortDir);
+        FlightSearchCriteria criteria = new FlightSearchCriteria(
+                origin,
+                destination,
+                departureDate,
+                passengers,
+                maxStops,
+                maxPrice,
+                baggage,
+                airline,
+                maxDuration,
+                pageOptions.page(),
+                pageOptions.size(),
+                pageOptions.sortField(),
+                pageOptions.sortDir()
+        );
+
+        String cacheKey = flightSearchMongoService.buildCacheKey(criteria);
+        long startedAtMillis = System.currentTimeMillis();
+
+        Optional<FlightOfferResponseList> cachedResult = flightSearchMongoService.findCachedResult(cacheKey);
+        if (cachedResult.isPresent()) {
+            FlightOfferResponseList response = cachedResult.get();
+            long elapsed = System.currentTimeMillis() - startedAtMillis;
+            flightSearchMongoService.recordSearchEvent(criteria, cacheKey, sizeOf(response), true, elapsed);
+            return response;
+        }
+
+        Pageable pageable = createPageable(pageOptions);
 
         Specification<FlightOffer> spec = FlightOfferSpecifications.buildSpec(
                 origin,
@@ -76,18 +109,50 @@ public class FlightService {
         response.setTotalPages(flightOfferPage.getTotalPages());
         response.setLastPage(flightOfferPage.isLast());
 
+        flightSearchMongoService.cacheResult(cacheKey, criteria, response);
+        long elapsed = System.currentTimeMillis() - startedAtMillis;
+        flightSearchMongoService.recordSearchEvent(criteria, cacheKey, sizeOf(response), false, elapsed);
+
         return response;
     }
 
-    private Pageable createPageable(int page, int size, String sortBy, String sortDir) {
-        // Защита от кривых параметров
+    @Transactional(readOnly = true)
+    public FlightSearchAnalyticsSummaryResponse getSearchAnalyticsSummary(int days) {
+        return flightSearchMongoService.getSummary(days);
+    }
+
+    @Transactional(readOnly = true)
+    public List<FlightSearchRouteStatResponse> getTopRoutes(int days, int limit) {
+        return flightSearchMongoService.getTopRoutes(days, limit);
+    }
+
+    @Transactional(readOnly = true)
+    public List<FlightSearchAirlineStatResponse> getTopAirlines(int days, int limit) {
+        return flightSearchMongoService.getTopAirlines(days, limit);
+    }
+
+    private Pageable createPageable(SearchPageOptions pageOptions) {
+        Sort.Direction direction = "DESC".equalsIgnoreCase(pageOptions.sortDir()) ? Sort.Direction.DESC : Sort.Direction.ASC;
+        return PageRequest.of(pageOptions.page(), pageOptions.size(), Sort.by(direction, pageOptions.sortField()));
+    }
+
+    private SearchPageOptions createPageOptions(int page, int size, String sortBy, String sortDir) {
         int validPage = Math.max(0, page);
         int validSize = (size > 0 && size <= 100) ? size : 20;
-
-        // По умолчанию сортируем по цене
         String sortField = (sortBy != null && !sortBy.isBlank()) ? sortBy : "price.total";
-        Sort.Direction direction = "DESC".equalsIgnoreCase(sortDir) ? Sort.Direction.DESC : Sort.Direction.ASC;
+        String validSortDir = "DESC".equalsIgnoreCase(sortDir) ? "DESC" : "ASC";
+        return new SearchPageOptions(validPage, validSize, sortField, validSortDir);
+    }
 
-        return PageRequest.of(validPage, validSize, Sort.by(direction, sortField));
+    private int sizeOf(FlightOfferResponseList response) {
+        return response.getContent() == null ? 0 : response.getContent().size();
+    }
+
+    private record SearchPageOptions(
+            int page,
+            int size,
+            String sortField,
+            String sortDir
+    ) {
     }
 }

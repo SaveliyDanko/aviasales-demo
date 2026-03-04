@@ -1,6 +1,7 @@
 package com.savadanko.aviasales.booking.dto;
 
 import com.savadanko.aviasales.booking.validation.ValidBookingRequest;
+import com.savadanko.aviasales.order.dto.MoneyDto;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -21,6 +22,10 @@ public class CreateBookingRequest {
 
     @NotNull
     @Valid
+    private MoneyDto expectedPrice;
+
+    @NotNull
+    @Valid
     private ContactInfoRequest contactInfo;
 
     @NotEmpty
@@ -30,4 +35,3 @@ public class CreateBookingRequest {
     @Valid
     private AncillariesRequest ancillaries;
 }
-
